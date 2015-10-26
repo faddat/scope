@@ -176,59 +176,39 @@ func main() {
 	var rpt syncReport
 	rpt.swap(report.MakeReport())
 
-	go func() {
-		defer done.Done()
-		spyTick := time.Tick(*spyInterval)
-
-		for {
-			select {
-			case <-spyTick:
-				start := time.Now()
-				for _, ticker := range tickers {
-					if err := ticker.Tick(); err != nil {
-						log.Printf("error doing ticker: %v", err)
-					}
-				}
-
-				localReport := rpt.copy()
-				localReport = localReport.Merge(doReport(reporters))
-				localReport = Apply(localReport, taggers)
-				rpt.swap(localReport)
-
-				if took := time.Since(start); took > *spyInterval {
-					log.Printf("report generation took too long (%s)", took)
-				}
-
-			case <-quit:
-				return
-			}
-		}
-	}()
-
-	go func() {
-		defer done.Done()
-		var (
-			pubTick = time.Tick(*publishInterval)
-			p       = xfer.NewReportPublisher(publishers)
-		)
-
-		for {
-			select {
-			case <-pubTick:
-				publishTicks.WithLabelValues().Add(1)
-				localReport := rpt.swap(report.MakeReport())
-				localReport.Window = *publishInterval
-				if err := p.Publish(localReport); err != nil {
-					log.Printf("publish: %v", err)
-				}
-
-			case <-quit:
-				return
-			}
-		}
-	}()
+	go spyLoop(quit, done, *spyInterval, tickers, reporters, taggers, rpt)
+	go publishLoop(quit, done, *publishInterval, publishers, rpt)
 
 	log.Printf("%s", <-interrupt())
+}
+
+func spyLoop(quit chan struct{}, done sync.WaitGroup, spyInterval time.Duration, tickers []Ticker, reporters []Reporter, taggers []Tagger, rpt syncReport) {
+	defer done.Done()
+	spyTick := time.Tick(spyInterval)
+
+	for {
+		select {
+		case <-spyTick:
+			start := time.Now()
+			for _, ticker := range tickers {
+				if err := ticker.Tick(); err != nil {
+					log.Printf("error doing ticker: %v", err)
+				}
+			}
+
+			localReport := rpt.copy()
+			localReport = localReport.Merge(doReport(reporters))
+			localReport = Apply(localReport, taggers)
+			rpt.swap(localReport)
+
+			if took := time.Since(start); took > *spyInterval {
+				log.Printf("report generation took too long (%s)", took)
+			}
+
+		case <-quit:
+			return
+		}
+	}
 }
 
 func doReport(reporters []Reporter) report.Report {
@@ -249,6 +229,29 @@ func doReport(reporters []Reporter) report.Report {
 		result = result.Merge(<-reports)
 	}
 	return result
+}
+
+func publishLoop(quit chan struct{}, done sync.WaitGroup, publishInterval time.Duration, publishers xfer.Publisher, rpt syncReport) {
+	defer done.Done()
+	var (
+		pubTick = time.Tick(*publishInterval)
+		p       = xfer.NewReportPublisher(publishers)
+	)
+
+	for {
+		select {
+		case <-pubTick:
+			publishTicks.WithLabelValues().Add(1)
+			localReport := rpt.swap(report.MakeReport())
+			localReport.Window = *publishInterval
+			if err := p.Publish(localReport); err != nil {
+				log.Printf("publish: %v", err)
+			}
+
+		case <-quit:
+			return
+		}
+	}
 }
 
 func interrupt() <-chan os.Signal {
