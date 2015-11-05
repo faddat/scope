@@ -58,7 +58,9 @@ func TestContainer(t *testing.T) {
 	defer c.StopGatheringStats()
 
 	// Send some stats to the docker container
+	now := time.Unix(12345, 67890).UTC()
 	stats := &client.Stats{}
+	stats.Read = now
 	stats.MemoryStats.Usage = 12345
 	if err = json.NewEncoder(writer).Encode(&stats); err != nil {
 		t.Error(err)
@@ -78,6 +80,9 @@ func TestContainer(t *testing.T) {
 		"docker_container_ports":           report.MakeStringSet("1.2.3.4:80->80/tcp", "81/tcp"),
 		"docker_container_ips":             report.MakeStringSet("1.2.3.4"),
 		"docker_container_ips_with_scopes": report.MakeStringSet("scope;1.2.3.4"),
+	}).WithMetrics(report.Metrics{
+		"cpu_total_usage": report.MakeMetric(),
+		"memory_usage":    report.MakeMetric().Add(now, 12345),
 	})
 	test.Poll(t, 100*time.Millisecond, want, func() interface{} {
 		node := c.GetNode("scope", []net.IP{})

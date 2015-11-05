@@ -131,6 +131,7 @@ func (rn RenderableNode) Prune() RenderableNode {
 	cp.Node.Counters = report.Counters{}   // snip
 	cp.Node.Edges = report.EdgeMetadatas{} // snip
 	cp.Node.Sets = report.Sets{}           // snip
+	cp.Node.Metrics = report.Metrics{}     // snip
 	return cp
 }
 

@@ -15,6 +15,8 @@ import (
 // This is an example Report:
 //   2 hosts with probes installed - client & server.
 var (
+	Now = time.Now()
+
 	ClientHostID  = "client.hostname.com"
 	ServerHostID  = "server.hostname.com"
 	UnknownHostID = ""
@@ -95,6 +97,13 @@ var (
 	ServerPodNodeID = report.MakePodNodeID("ping", "pong-b")
 	ServiceID       = "ping/pongservice"
 	ServiceNodeID   = report.MakeServiceNodeID("ping", "pongservice")
+
+	LoadMetric  = report.MakeMetric().Add(Now, 0.01).WithFirst(Now.Add(-15 * time.Second))
+	LoadMetrics = report.Metrics{
+		host.Load1:  LoadMetric,
+		host.Load5:  LoadMetric,
+		host.Load15: LoadMetric,
+	}
 
 	Report = report.Report{
 		Endpoint: report.Topology{
@@ -284,18 +293,24 @@ var (
 				ClientHostNodeID: report.MakeNodeWith(map[string]string{
 					"host_name":       ClientHostName,
 					"os":              "Linux",
-					"load":            "0.01 0.01 0.01",
 					report.HostNodeID: ClientHostNodeID,
 				}).WithSets(report.Sets{
 					host.LocalNetworks: report.MakeStringSet("10.10.10.0/24"),
+				}).WithMetrics(report.Metrics{
+					host.Load1:  LoadMetric,
+					host.Load5:  LoadMetric,
+					host.Load15: LoadMetric,
 				}),
 				ServerHostNodeID: report.MakeNodeWith(map[string]string{
 					"host_name":       ServerHostName,
 					"os":              "Linux",
-					"load":            "0.01 0.01 0.01",
 					report.HostNodeID: ServerHostNodeID,
 				}).WithSets(report.Sets{
 					host.LocalNetworks: report.MakeStringSet("10.10.10.0/24"),
+				}).WithMetrics(report.Metrics{
+					host.Load1:  LoadMetric,
+					host.Load5:  LoadMetric,
+					host.Load15: LoadMetric,
 				}),
 			},
 		},

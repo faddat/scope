@@ -222,6 +222,14 @@ func (c *container) ports(localAddrs []net.IP) report.StringSet {
 	return report.MakeStringSet(ports...)
 }
 
+func (c *container) memoryUsageMetric() report.Metric {
+	result := report.MakeMetric()
+	for _, s := range c.pendingStats {
+		result = result.Add(s.Read, float64(s.MemoryStats.Usage))
+	}
+	return result
+}
+
 func (c *container) cpuPercentMetric() report.Metric {
 	result := report.MakeMetric()
 	if len(c.pendingStats) < 2 {
@@ -238,22 +246,18 @@ func (c *container) cpuPercentMetric() report.Metric {
 			cpuPercent = (cpuDelta / systemDelta) * float64(len(s.CPUStats.CPUUsage.PercpuUsage)) * 100.0
 		}
 		result = result.Add(s.Read, cpuPercent)
+		available := float64(len(s.CPUStats.CPUUsage.PercpuUsage)) * 100.0
+		if available >= result.Max {
+			result.Max = available
+		}
 		previous = s
-	}
-	return result
-}
-
-func (c *container) metric(f func(*docker.Stats) float64) report.Metric {
-	result := report.MakeMetric()
-	for _, s := range c.pendingStats {
-		result = result.Add(s.Read, f(s))
 	}
 	return result
 }
 
 func (c *container) metrics() report.Metrics {
 	result := report.Metrics{
-		MemoryUsage:   c.metric(func(s *docker.Stats) float64 { return float64(s.MemoryStats.Usage) }),
+		MemoryUsage:   c.memoryUsageMetric(),
 		CPUTotalUsage: c.cpuPercentMetric(),
 	}
 
@@ -286,7 +290,8 @@ func (c *container) GetNode(hostID string, localAddrs []net.IP) report.Node {
 		ContainerPorts:         c.ports(localAddrs),
 		ContainerIPs:           report.MakeStringSet(ips...),
 		ContainerIPsWithScopes: report.MakeStringSet(ipsWithScopes...),
-	})
+	}).WithMetrics(c.metrics())
+
 	AddLabels(result, c.container.Config.Labels)
 
 	if c.latestStats == nil {
@@ -315,7 +320,6 @@ func (c *container) GetNode(hostID string, localAddrs []net.IP) report.Node {
 		CPUSystemCPUUsage:    strconv.FormatUint(c.latestStats.CPUStats.SystemCPUUsage, 10),
 	}))
 
-	result = result.WithMetrics(c.metrics())
 	return result
 }
 
